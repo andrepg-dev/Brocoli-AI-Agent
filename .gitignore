@@ -1,24 +1,5 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# LangGraph
-.langgraph_api/
-
-# Python
-__pycache__/
-*.py[cod]
-
-# Virtual environment
-.venv/
-
-# Environment variables
-.env
-.env.*
-
-# Distribution
-dist/
-build/
-*.egg-info/
-
 # Dependencies
 node_modules
 .pnp
@@ -55,3 +36,36 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python packaging
+*.egg-info/
+build/
+dist/
+
+# LangGraph
+.langgraph_api/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Temporary files
+*.tmp
+*.temp
