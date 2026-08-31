@@ -3,6 +3,7 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 
 def call_llm(state: MessagesState):
     print("LLM called")
+    return {"messages": [{"role": "assistant", "content": "Hi, how can i help you?"}]}
 
 
 graph = StateGraph(MessagesState)

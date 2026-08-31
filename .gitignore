@@ -1,5 +1,24 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# LangGraph
+.langgraph_api/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# Environment variables
+.env
+.env.*
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
 # Dependencies
 node_modules
 .pnp
