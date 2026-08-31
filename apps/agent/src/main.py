@@ -2,8 +2,9 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 
 
 def call_llm(state: MessagesState):
-    print("LLM called")
-    return {"messages": [{"role": "assistant", "content": "Hi, how can i help you?"}]}
+    return {
+        "messages": [{"role": "assistant", "content": "I'm great, what about you?"}]
+    }
 
 
 graph = StateGraph(MessagesState)
