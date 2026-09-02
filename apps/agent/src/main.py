@@ -1,18 +1,42 @@
-from langgraph.graph import END, START, MessagesState, StateGraph
+from dotenv import load_dotenv
+from graph_state import GraphMemoryState
+from langchain.chat_models import init_chat_model
+from langgraph.graph import END, START, StateGraph
+from langgraph.store.memory import InMemoryStore
+from langsmith import Client
+from rich.console import Console
+
+load_dotenv(override=True)
+
+console = Console()
+langsmith_client = Client()
+MODEL_PROVIDER = "openai:gpt-4o-mini"
+store = InMemoryStore()
 
 
-def call_llm(state: MessagesState):
-    return {
-        "messages": [{"role": "assistant", "content": "I'm great, what about you?"}]
-    }
+def call_llm(state: GraphMemoryState):
+    """Function to Call LLM"""
+    llm = init_chat_model(MODEL_PROVIDER, store=store)
+
+    response = llm.invoke(
+        state["messages"],
+    )
+
+    return {"messages": [response]}
 
 
-graph = StateGraph(MessagesState)
+def web_search(state: GraphMemoryState):
+    """This function works for searching in the web"""
+
+    search = state["search"]
+    return {"search": search}
+
+
+graph = StateGraph(GraphMemoryState)
 graph.add_node("call_llm", call_llm)
+graph.add_node("web_search", web_search)
 
 graph.add_edge(START, "call_llm")
-graph.add_edge("call_llm", END)
-
+graph.add_edge("call_llm", "web_search")
+graph.add_edge("web_search", END)
 graph = graph.compile()
-
-graph.invoke({"messages": [{"role": "user", "content": "Hi, how are you?"}]})
