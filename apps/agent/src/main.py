@@ -25,18 +25,9 @@ def call_llm(state: GraphMemoryState):
     return {"messages": [response]}
 
 
-def web_search(state: GraphMemoryState):
-    """This function works for searching in the web"""
-
-    search = state["search"]
-    return {"search": search}
-
 
 graph = StateGraph(GraphMemoryState)
 graph.add_node("call_llm", call_llm)
-graph.add_node("web_search", web_search)
-
 graph.add_edge(START, "call_llm")
-graph.add_edge("call_llm", "web_search")
-graph.add_edge("web_search", END)
+graph.add_edge("call_llm", END)
 graph = graph.compile()
