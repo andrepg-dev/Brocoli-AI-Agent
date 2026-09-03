@@ -23,11 +23,5 @@ def read_long_term_memory(_: GraphMemoryState, runtime: Runtime[GraphMemoryState
 
     store = runtime.store
     user_id = runtime.context.user_id
-
-    print(user_id)
-
     user_preferences = store.get(("users",), user_id)
-
-    console.print(user_preferences.value if user_preferences else None)
-
     return {"user_preferences": user_preferences.value if user_preferences else None}

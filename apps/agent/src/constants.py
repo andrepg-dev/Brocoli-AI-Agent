@@ -1,0 +1,6 @@
+FOOD_PLANNER_LLM = "food_planner_llm"
+READ_LONG_TERM_MEMORY = "read_long_term_memory"
+INGREDIENTS_PLANNER = "ingredients_planner"
+SHOPPING_LIST = "shopping_list"
+EVALUATOR = "evaluator"
+CALL_LLM = "call_llm"
