@@ -5,6 +5,7 @@ from constants import (
     EVALUATOR,
     FOOD_PLANNER_LLM,
     INGREDIENTS_PLANNER,
+    PRICE_RETRIEVER,
     READ_LONG_TERM_MEMORY,
     SHOPPING_LIST,
 )
@@ -20,6 +21,7 @@ from nodes import (
     evaluator,
     food_planner,
     ingredients_planner,
+    price_retriever,
     shopping_list,
 )
 
@@ -49,6 +51,7 @@ graph = StateGraph(GraphMemoryState, context_schema=RuntimeContext)
 graph.add_node(READ_LONG_TERM_MEMORY, read_long_term_memory)
 graph.add_node(FOOD_PLANNER_LLM, food_planner)
 graph.add_node(INGREDIENTS_PLANNER, ingredients_planner)
+graph.add_node(PRICE_RETRIEVER, price_retriever)
 graph.add_node(SHOPPING_LIST, shopping_list)
 graph.add_node(EVALUATOR, evaluator)
 graph.add_node(CALL_LLM, call_llm)
@@ -61,7 +64,8 @@ graph.add_conditional_edges(
 
 graph.add_edge(START, READ_LONG_TERM_MEMORY)
 graph.add_edge(FOOD_PLANNER_LLM, INGREDIENTS_PLANNER)
-graph.add_edge(INGREDIENTS_PLANNER, SHOPPING_LIST)
+graph.add_edge(INGREDIENTS_PLANNER, PRICE_RETRIEVER)
+graph.add_edge(PRICE_RETRIEVER, SHOPPING_LIST)
 graph.add_edge(SHOPPING_LIST, EVALUATOR)
 graph.add_edge(EVALUATOR, END)
 graph.add_edge(CALL_LLM, END)

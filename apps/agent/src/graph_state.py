@@ -19,4 +19,6 @@ class GraphMemoryState(MessagesState):
     user_preferences: UserPreferences
     food: str = Field("This is the food that you have planned for the user")
     ingredients: str = Field("This are the ingredients of the food")
+    real_prices: list[dict] = Field(default_factory=list, description="Precios reales de la BD")
     shopping_list: str = Field("Shopping list")
+

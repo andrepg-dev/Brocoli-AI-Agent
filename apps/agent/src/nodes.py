@@ -4,6 +4,7 @@ from constants import CALL_LLM, FOOD_PLANNER_LLM
 from graph_state import GraphMemoryState
 from langchain.chat_models import init_chat_model
 from langchain.messages import HumanMessage, SystemMessage
+from retrieve import get_prices_for_ingredients_batch
 from rich.console import Console
 
 console = Console()
@@ -92,14 +93,47 @@ Calcula la lista consolidada de ingredientes con cantidades realistas para 2 per
     return {"messages": [response], "ingredients": response.content}
 
 
+def price_retriever(state: GraphMemoryState):
+    """Nodo determinista: consulta precios reales de los ingredientes en SQLite."""
+    ingredients_text = state.get("ingredients") or ""
+
+    ingredient_names = []
+    for line in ingredients_text.splitlines():
+        clean_line = line.strip()
+        if clean_line.startswith("-"):
+            name = clean_line.lstrip("-").split(":")[0].strip()
+            name = name.replace("[", "").replace("]", "").replace("*", "").strip()
+            if name:
+                ingredient_names.append(name)
+
+    if not ingredient_names:
+        ingredient_names = [
+            l.strip()
+            for l in ingredients_text.splitlines()
+            if l.strip() and not l.strip().startswith("#")
+        ]
+
+    real_prices = get_prices_for_ingredients_batch(ingredient_names)
+    return {"real_prices": real_prices}
+
+
 def shopping_list(state: GraphMemoryState):
-    llm = init_chat_model(MODEL_PROVIDER, temperature=0.2)
+    llm = init_chat_model(MODEL_PROVIDER, temperature=0.1)
     food = state.get("food") or ""
     ingredients = state.get("ingredients") or ""
+    real_prices = state.get("real_prices") or []
 
     assert food and ingredients, (
         "Falta el plan de comida o los ingredientes en el estado"
     )
+
+    # Formatear lista de precios reales para el prompt
+    prices_context = ""
+    for item in real_prices:
+        if item.get("price_lps") is not None:
+            prices_context += f"- {item['ingredient']} -> Producto encontrado: '{item['matched_product']}' a {item['price_lps']} LPS (Categoría: {item.get('category', 'General')})\n"
+        else:
+            prices_context += f"- {item['ingredient']} -> Sin registro en BD (requiere estimación razonable)\n"
 
     messages = [
         SystemMessage(
@@ -107,20 +141,26 @@ def shopping_list(state: GraphMemoryState):
 Tu tarea es transformar la lista de ingredientes en una lista de compras realista con precios en Lempiras (LPS / HNL), ajustada a un presupuesto de {BUDGET} LPS para 2 personas.
 
 REGLAS OBLIGATORIAS:
-1. ESTIMACIÓN REALISTA DE PRECIOS: Si no dispones del precio exacto del día en tienda, asigna un PRECIO ESTIMADO REALISTA acorde al costo de vida y supermercados en Honduras. Prohibido inventar precios ficticios absurdos (como carne a 2 LPS o verduras a precios irreales).
-2. RESPETO AL PRESUPUESTO ({BUDGET} LPS): Optimiza y prioriza marcas accesibles y presentaciones estándar de supermercado para que la suma total estimada se ajuste coherentemente al presupuesto de {BUDGET} LPS.
-3. CERO TEXTO DE RELLENO: No escribas ningún saludo, introducción ni despedida (prohibido decir 'Ya está lista la lista de compras', 'Aquí tienes la lista', etc.). Inicia inmediatamente con la tabla o secciones de compra.
-4. IDIOMA Y ORGANIZACIÓN: Todo en español, estructurado por pasillos/secciones del supermercado (ej. Pasillo de Carnes y Embutidos, Frutas y Verduras, Lácteos, Despensa y Granos, etc.).
-5. FORMATO DE SALIDA: Presenta cada sección con una tabla Markdown clara:
-   | Producto | Cantidad / Presentación | Precio Unitario Estimado (LPS) | Subtotal Estimado (LPS) |
+1. USO DE PRECIOS REALES (MÁXIMA PRIORIDAD): Dispones de una lista de PRECIOS REALES de la base de datos del supermercado. Si el producto tiene un precio real en la base de datos, ES OBLIGATORIO usar ese precio exacto. Prohibido inventar o alterar precios que ya fueron provistos como reales.
+2. PRODUCTOS SIN REGISTRO: Solo si un producto aparece como 'Sin registro en BD', proporciona una estimación realista acorde a los precios promedio de Honduras.
+3. RESPETO AL PRESUPUESTO ({BUDGET} LPS): Optimiza y prioriza marcas accesibles y presentaciones estándar de supermercado para que la suma total estimada se ajuste coherentemente al presupuesto de {BUDGET} LPS.
+4. CERO TEXTO DE RELLENO: No escribas ningún saludo, introducción ni despedida (prohibido decir 'Ya está lista la lista de compras', 'Aquí tienes la lista', etc.). Inicia inmediatamente con la tabla o secciones de compra.
+5. IDIOMA Y ORGANIZACIÓN: Todo en español, estructurado por pasillos/secciones del supermercado (ej. Pasillo de Carnes y Embutidos, Frutas y Verduras, Lácteos, Despensa y Granos, etc.).
+6. FORMATO DE SALIDA: Presenta cada sección con una tabla Markdown clara:
+   | Producto | Cantidad / Presentación | Precio Unitario (LPS) | Subtotal (LPS) |
    Al final de la lista, incluye una sección de resumen con:
    - **Total Estimado de Compras:** [Total] LPS
    - **Presupuesto Asignado:** {BUDGET} LPS
    - **Diferencia / Balance:** [Diferencia] LPS"""
         ),
         HumanMessage(
-            f"""Genera la lista de compras basada en los siguientes ingredientes:
-{ingredients}"""
+            f"""Genera la lista de compras basada en los siguientes ingredientes y la información de precios reales recuperada:
+
+INGREDIENTES REQUERIDOS:
+{ingredients}
+
+PRECIOS REALES DE SUPERMERCADO EN BASE DE DATOS:
+{prices_context}"""
         ),
     ]
 
