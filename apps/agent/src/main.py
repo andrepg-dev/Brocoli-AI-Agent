@@ -54,7 +54,7 @@ graph.add_node(EVALUATOR, evaluator)
 graph.add_node(CALL_LLM, call_llm)
 
 graph.add_conditional_edges(
-    READ_LONG_TERM_MEMORY,
+    START,
     direct_talk,
     {CALL_LLM: CALL_LLM, FOOD_PLANNER_LLM: FOOD_PLANNER_LLM},
 )
