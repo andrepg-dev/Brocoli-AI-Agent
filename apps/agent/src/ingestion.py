@@ -3,6 +3,7 @@
 import os
 import time
 from datetime import datetime
+
 import httpx
 from dotenv import load_dotenv
 from models import ProductPrice
@@ -23,7 +24,10 @@ def init_db() -> None:
 
 
 def fetch_vtex_products(
-    query: str, base_url: str = SUPERMARKET_BASE_URL, from_idx: int = 0, to_idx: int = 49
+    query: str,
+    base_url: str = SUPERMARKET_BASE_URL,
+    from_idx: int = 0,
+    to_idx: int = 49,
 ) -> list[dict]:
     """Fetch products from VTEX catalog search API."""
     endpoint = f"{base_url.rstrip('/')}/api/catalog_system/pub/products/search"
@@ -51,7 +55,9 @@ def chunk_list(items: list, chunk_size: int = 5):
         yield items[i : i + chunk_size]
 
 
-def parse_and_store_products(raw_products: list[dict], supermarket_name: str = "Paiz") -> int:
+def parse_and_store_products(
+    raw_products: list[dict], supermarket_name: str = "Paiz"
+) -> int:
     """Parse raw VTEX JSON response and upsert into SQLite using SQLModel Session."""
     saved_count = 0
 
@@ -80,7 +86,9 @@ def parse_and_store_products(raw_products: list[dict], supermarket_name: str = "
                 if price <= 0:
                     continue
 
-                statement = select(ProductPrice).where(ProductPrice.product_id == prod_id)
+                statement = select(ProductPrice).where(
+                    ProductPrice.product_id == prod_id
+                )
                 existing = session.exec(statement).first()
 
                 if existing:
