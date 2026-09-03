@@ -130,19 +130,21 @@ def shopping_list(state: GraphMemoryState):
         "Falta el plan de comida o los ingredientes en el estado"
     )
 
-    # Formatear lista de opciones reales encontradas para el prompt
+    # Formatear catálogo limpio de opciones reales para el prompt
     prices_context = ""
     for item in real_prices:
         ing = item.get("ingredient")
         options = item.get("options", [])
         if options:
-            prices_context += (
-                f"\n🛒 Ingrediente: **{ing}** (Opciones disponibles en tienda):\n"
-            )
-            for idx, opt in enumerate(options, 1):
-                prices_context += f"   - Opción {idx}: {opt['product_name']} | Marca: {opt.get('brand', 'N/A')} | Precio Real: **{opt['price_lps']} LPS**\n"
+            prices_context += f"\n🛒 **{ing}**:\n"
+            for opt in options:
+                prices_context += f"   - {opt['product']} -> {opt['price']} LPS\n"
         else:
-            prices_context += f"\n🛒 Ingrediente: **{ing}** -> Sin registro en catálogo (requiere estimación razonable)\n"
+            prices_context += f"\n🛒 **{ing}** -> Sin opciones en catálogo (estimar)\n"
+
+    print("\n" + "=" * 70)
+    console.print(prices_context)
+    print("\n" + "=" * 70)
 
     messages = [
         SystemMessage(
@@ -157,6 +159,7 @@ CÓMO ELEGIR LOS PRODUCTOS EN EL SUPERMERCADO:
 3. INGREDIENTES SIN REGISTRO: Solo si un ingrediente indica 'Sin registro en catálogo', proporciona una estimación realista acorde a los precios promedio de Honduras.
 4. CERO TEXTO DE RELLENO: No escribas saludos, introducciones ni despedidas (prohibido decir 'Ya está lista la lista de compras', 'Aquí tienes la lista'). Comienza inmediatamente con las tablas de pasillo.
 5. FORMATO DE SALIDA: Presenta cada pasillo/sección con una tabla Markdown clara:
+6. TE EN CUENTA: Ocasionalmente NO se mostrará el producto que buscas en el Catálogo de Opciones reales en el supermercado, en ese caso PON UN PRECIO ESTIMADO SI EL PRODUCTO DEL CATALOGO NO sea igual al INGREDIENTE
    | Producto Seleccionado | Cantidad / Presentación | Precio Unitario (LPS) | Subtotal (LPS) |
    Al final de la lista, incluye un resumen matemático exacto:
    - **Total Estimado de Compras:** [Total] LPS
@@ -164,7 +167,7 @@ CÓMO ELEGIR LOS PRODUCTOS EN EL SUPERMERCADO:
    - **Diferencia / Balance:** [Diferencia] LPS"""
         ),
         HumanMessage(
-            f"""Genera la lista de compras seleccionando las mejores opciones para los ingredientes del menú y respetando los precios reales provistos:
+            f"""Genera la lista de compras seleccionando las mejores opciones para los ingredientes del menú y respetando los precios reales provistos, en el producto seleccionado incluye el nombre de la marca:
 
 INGREDIENTES REQUERIDOS:
 {ingredients}

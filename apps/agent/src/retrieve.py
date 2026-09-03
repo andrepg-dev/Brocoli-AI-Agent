@@ -3,6 +3,7 @@
 import os
 import re
 import unicodedata
+
 from ingestion import fetch_vtex_products, parse_and_store_products
 from models import ProductPrice
 from sqlmodel import Session, create_engine, select
@@ -80,7 +81,7 @@ def extract_core_search_term(ingredient_raw: str) -> str:
     return words[0] if words else norm
 
 
-def query_db_for_options(term: str, limit: int = 3) -> list[ProductPrice]:
+def query_db_for_options(term: str, limit: int = 6) -> list[ProductPrice]:
     """Search SQLite DB for matching products strictly by product_name."""
     if not os.path.exists(DB_PATH):
         return []
@@ -103,7 +104,7 @@ def query_db_for_options(term: str, limit: int = 3) -> list[ProductPrice]:
 
 
 def get_prices_for_ingredients_smart(
-    ingredients_list: list[str], max_options_per_item: int = 3
+    ingredients_list: list[str], max_options_per_item: int = 6
 ) -> list[dict]:
     """Smart price retrieval:
     1. Checks local SQLite DB for matching options.
@@ -126,15 +127,8 @@ def get_prices_for_ingredients_smart(
             results.append(
                 {
                     "ingredient": clean_name,
-                    "search_term": search_term,
-                    "source": "database",
                     "options": [
-                        {
-                            "product_name": opt.product_name,
-                            "price_lps": opt.price_lps,
-                            "brand": opt.brand,
-                            "category": opt.category,
-                        }
+                        {"product": opt.product_name, "price": opt.price_lps}
                         for opt in options
                     ],
                 }
@@ -144,7 +138,9 @@ def get_prices_for_ingredients_smart(
 
     # Second pass: For missing items, search VTEX on the fly & cache in DB!
     if missing_for_vtex:
-        print(f"[*] Buscando {len(missing_for_vtex)} ingredientes faltantes en VTEX en vivo...")
+        print(
+            f"[*] Buscando {len(missing_for_vtex)} ingredientes faltantes en VTEX en vivo..."
+        )
         for clean_name, search_term in missing_for_vtex:
             raw_products = fetch_vtex_products(search_term)
             if raw_products:
@@ -154,15 +150,8 @@ def get_prices_for_ingredients_smart(
                     results.append(
                         {
                             "ingredient": clean_name,
-                            "search_term": search_term,
-                            "source": "vtex_live_cached",
                             "options": [
-                                {
-                                    "product_name": opt.product_name,
-                                    "price_lps": opt.price_lps,
-                                    "brand": opt.brand,
-                                    "category": opt.category,
-                                }
+                                {"product": opt.product_name, "price": opt.price_lps}
                                 for opt in options
                             ],
                         }
@@ -172,10 +161,7 @@ def get_prices_for_ingredients_smart(
             results.append(
                 {
                     "ingredient": clean_name,
-                    "search_term": search_term,
-                    "source": "not_found",
                     "options": [],
-                    "note": "Sin registro en BD ni catálogo web (requiere estimación)",
                 }
             )
 
@@ -184,4 +170,4 @@ def get_prices_for_ingredients_smart(
 
 def get_prices_for_ingredients_batch(ingredients_list: list[str]) -> list[dict]:
     """Compatibility alias returning smart options."""
-    return get_prices_for_ingredients_smart(ingredients_list, max_options_per_item=3)
+    return get_prices_for_ingredients_smart(ingredients_list, max_options_per_item=6)
