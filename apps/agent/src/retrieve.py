@@ -1,95 +1,187 @@
-"""Retrieve price information from local SQLite database in batch using SQLModel."""
+"""Smart price retrieval with local SQLite caching, on-demand VTEX scraping, and multi-option selection."""
 
 import os
-
+import re
+import unicodedata
+from ingestion import fetch_vtex_products, parse_and_store_products
 from models import ProductPrice
-from sqlmodel import Session, create_engine, or_, select
+from sqlmodel import Session, create_engine, select
 
-DB_PATH = os.getenv("PRICE_DB_PATH", "prices.db")
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_DB_PATH = os.path.join(CURRENT_DIR, "prices.db")
+DB_PATH = os.getenv("PRICE_DB_PATH", DEFAULT_DB_PATH)
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(DATABASE_URL, echo=False)
 
 
-def search_product_price(ingredient_name: str) -> ProductPrice | None:
-    """Search for the best matching ProductPrice in local DB for a single ingredient."""
+def strip_accents(text: str) -> str:
+    """Remove diacritics/accents from text (e.g. 'plátano' -> 'platano')."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn"
+    )
+
+
+def extract_core_search_term(ingredient_raw: str) -> str:
+    """Extract clean, searchable keyword from ingredient string.
+    Example: 'Atún enlatado' -> 'atun'
+             'Carne de res' -> 'res'
+             'Tortillas de maíz' -> 'tortilla'
+             'Especias varias (pimienta, orégano)' -> 'pimienta'
+    """
+    cleaned = re.sub(r"\(.*?\)", "", ingredient_raw)
+    cleaned = re.sub(r"[^\w\s]", "", cleaned).strip().lower()
+
+    special_mappings = {
+        "atun enlatado": "atun",
+        "carne de res": "res",
+        "chuletas de cerdo": "chuleta",
+        "tortillas de maiz": "tortilla",
+        "tortillas": "tortilla",
+        "frijoles negros": "frijol",
+        "frijoles rojos": "frijol",
+        "aceite vegetal": "aceite",
+        "yogur natural": "yogur",
+        "pan de banano": "pan",
+        "pan de maiz": "pan",
+        "cereal integral": "cereal",
+        "especias varias": "especias",
+    }
+
+    norm = strip_accents(cleaned)
+    for k, v in special_mappings.items():
+        if k in norm:
+            return v
+
+    stop_words = {
+        "de",
+        "en",
+        "con",
+        "para",
+        "y",
+        "el",
+        "la",
+        "los",
+        "las",
+        "un",
+        "una",
+        "fresco",
+        "fresca",
+        "natural",
+        "enlatado",
+        "enlatada",
+        "varias",
+        "varios",
+        "picado",
+        "molido",
+    }
+    words = [w for w in norm.split() if w not in stop_words]
+
+    return words[0] if words else norm
+
+
+def query_db_for_options(term: str, limit: int = 3) -> list[ProductPrice]:
+    """Search SQLite DB for matching products strictly by product_name."""
     if not os.path.exists(DB_PATH):
-        return None
-
-    with Session(engine) as session:
-        statement = (
-            select(ProductPrice)
-            .where(
-                (ProductPrice.product_name.contains(ingredient_name))
-                | (ProductPrice.category.contains(ingredient_name))
-            )
-            .order_by(ProductPrice.price_lps.asc())
-            .limit(1)
-        )
-        return session.exec(statement).first()
-
-
-def get_prices_for_ingredients_batch(ingredients_list: list[str]) -> list[dict]:
-    """Retrieve prices for a list of ingredients in a SINGLE batch SQL query."""
-    if not ingredients_list or not os.path.exists(DB_PATH):
-        return [
-            {
-                "ingredient": ing,
-                "matched_product": None,
-                "price_lps": None,
-                "note": "Sin registro",
-            }
-            for ing in ingredients_list
-        ]
-
-    # Build dynamic OR conditions for all ingredients
-    conditions = []
-    for ing in ingredients_list:
-        clean_ing = ing.strip()
-        if clean_ing:
-            conditions.append(ProductPrice.product_name.contains(clean_ing))
-            conditions.append(ProductPrice.category.contains(clean_ing))
-
-    if not conditions:
         return []
 
-    # Execute ONE single SQL query for all ingredients
+    norm_term = strip_accents(term).lower()
+    title_term = norm_term.capitalize()
+
     with Session(engine) as session:
-        statement = select(ProductPrice).where(or_(*conditions))
-        matched_products = session.exec(statement).all()
-
-    # Map each ingredient to its best matching product
-    results = []
-    for ing in ingredients_list:
-        clean_ing = ing.strip().lower()
-        matched = next(
-            (
-                p
-                for p in matched_products
-                if clean_ing in p.product_name.lower()
-                or (p.category and clean_ing in p.category.lower())
-            ),
-            None,
+        stmt = (
+            select(ProductPrice)
+            .where(
+                (ProductPrice.product_name.contains(term))
+                | (ProductPrice.product_name.contains(norm_term))
+                | (ProductPrice.product_name.contains(title_term))
+            )
+            .order_by(ProductPrice.price_lps.asc())
+            .limit(limit)
         )
+        return list(session.exec(stmt).all())
 
-        if matched:
+
+def get_prices_for_ingredients_smart(
+    ingredients_list: list[str], max_options_per_item: int = 3
+) -> list[dict]:
+    """Smart price retrieval:
+    1. Checks local SQLite DB for matching options.
+    2. If missing in DB, fetches live from VTEX API, saves to DB, and re-queries.
+    3. Returns top 2-3 best options per ingredient for the model to choose.
+    """
+    results = []
+    missing_for_vtex = []
+
+    # First pass: Check DB
+    for ing in ingredients_list:
+        clean_name = ing.strip()
+        if not clean_name:
+            continue
+
+        search_term = extract_core_search_term(clean_name)
+        options = query_db_for_options(search_term, limit=max_options_per_item)
+
+        if options:
             results.append(
                 {
-                    "ingredient": ing,
-                    "matched_product": matched.product_name,
-                    "price_lps": matched.price_lps,
-                    "category": matched.category,
-                    "supermarket": matched.supermarket,
+                    "ingredient": clean_name,
+                    "search_term": search_term,
+                    "source": "database",
+                    "options": [
+                        {
+                            "product_name": opt.product_name,
+                            "price_lps": opt.price_lps,
+                            "brand": opt.brand,
+                            "category": opt.category,
+                        }
+                        for opt in options
+                    ],
                 }
             )
         else:
+            missing_for_vtex.append((clean_name, search_term))
+
+    # Second pass: For missing items, search VTEX on the fly & cache in DB!
+    if missing_for_vtex:
+        print(f"[*] Buscando {len(missing_for_vtex)} ingredientes faltantes en VTEX en vivo...")
+        for clean_name, search_term in missing_for_vtex:
+            raw_products = fetch_vtex_products(search_term)
+            if raw_products:
+                parse_and_store_products(raw_products)
+                options = query_db_for_options(search_term, limit=max_options_per_item)
+                if options:
+                    results.append(
+                        {
+                            "ingredient": clean_name,
+                            "search_term": search_term,
+                            "source": "vtex_live_cached",
+                            "options": [
+                                {
+                                    "product_name": opt.product_name,
+                                    "price_lps": opt.price_lps,
+                                    "brand": opt.brand,
+                                    "category": opt.category,
+                                }
+                                for opt in options
+                            ],
+                        }
+                    )
+                    continue
+
             results.append(
                 {
-                    "ingredient": ing,
-                    "matched_product": None,
-                    "price_lps": None,
-                    "note": "Sin registro en BD",
+                    "ingredient": clean_name,
+                    "search_term": search_term,
+                    "source": "not_found",
+                    "options": [],
+                    "note": "Sin registro en BD ni catálogo web (requiere estimación)",
                 }
             )
 
     return results
+
+
+def get_prices_for_ingredients_batch(ingredients_list: list[str]) -> list[dict]:
+    """Compatibility alias returning smart options."""
+    return get_prices_for_ingredients_smart(ingredients_list, max_options_per_item=3)

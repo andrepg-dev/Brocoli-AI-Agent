@@ -114,6 +114,9 @@ def price_retriever(state: GraphMemoryState):
         ]
 
     real_prices = get_prices_for_ingredients_batch(ingredient_names)
+
+    console.print(real_prices)
+
     return {"real_prices": real_prices}
 
 
@@ -127,39 +130,46 @@ def shopping_list(state: GraphMemoryState):
         "Falta el plan de comida o los ingredientes en el estado"
     )
 
-    # Formatear lista de precios reales para el prompt
+    # Formatear lista de opciones reales encontradas para el prompt
     prices_context = ""
     for item in real_prices:
-        if item.get("price_lps") is not None:
-            prices_context += f"- {item['ingredient']} -> Producto encontrado: '{item['matched_product']}' a {item['price_lps']} LPS (Categoría: {item.get('category', 'General')})\n"
+        ing = item.get("ingredient")
+        options = item.get("options", [])
+        if options:
+            prices_context += (
+                f"\n🛒 Ingrediente: **{ing}** (Opciones disponibles en tienda):\n"
+            )
+            for idx, opt in enumerate(options, 1):
+                prices_context += f"   - Opción {idx}: {opt['product_name']} | Marca: {opt.get('brand', 'N/A')} | Precio Real: **{opt['price_lps']} LPS**\n"
         else:
-            prices_context += f"- {item['ingredient']} -> Sin registro en BD (requiere estimación razonable)\n"
+            prices_context += f"\n🛒 Ingrediente: **{ing}** -> Sin registro en catálogo (requiere estimación razonable)\n"
 
     messages = [
         SystemMessage(
             f"""Eres un asistente de compras experto en supermercados de Honduras (específicamente supermercados tipo Paiz en el Bulevar Morazán, Tegucigalpa).
-Tu tarea es transformar la lista de ingredientes en una lista de compras realista con precios en Lempiras (LPS / HNL), ajustada a un presupuesto de {BUDGET} LPS para 2 personas.
+Tu tarea es confeccionar la lista de compras óptima para 2 personas durante 15 días, ajustada estrictamente a un presupuesto de {BUDGET} LPS.
 
-REGLAS OBLIGATORIAS:
-1. USO DE PRECIOS REALES (MÁXIMA PRIORIDAD): Dispones de una lista de PRECIOS REALES de la base de datos del supermercado. Si el producto tiene un precio real en la base de datos, ES OBLIGATORIO usar ese precio exacto. Prohibido inventar o alterar precios que ya fueron provistos como reales.
-2. PRODUCTOS SIN REGISTRO: Solo si un producto aparece como 'Sin registro en BD', proporciona una estimación realista acorde a los precios promedio de Honduras.
-3. RESPETO AL PRESUPUESTO ({BUDGET} LPS): Optimiza y prioriza marcas accesibles y presentaciones estándar de supermercado para que la suma total estimada se ajuste coherentemente al presupuesto de {BUDGET} LPS.
-4. CERO TEXTO DE RELLENO: No escribas ningún saludo, introducción ni despedida (prohibido decir 'Ya está lista la lista de compras', 'Aquí tienes la lista', etc.). Inicia inmediatamente con la tabla o secciones de compra.
-5. IDIOMA Y ORGANIZACIÓN: Todo en español, estructurado por pasillos/secciones del supermercado (ej. Pasillo de Carnes y Embutidos, Frutas y Verduras, Lácteos, Despensa y Granos, etc.).
-6. FORMATO DE SALIDA: Presenta cada sección con una tabla Markdown clara:
-   | Producto | Cantidad / Presentación | Precio Unitario (LPS) | Subtotal (LPS) |
-   Al final de la lista, incluye una sección de resumen con:
+CÓMO ELEGIR LOS PRODUCTOS EN EL SUPERMERCADO:
+1. SELECCIÓN INTELIGENTE DE OPCIONES: Para cada ingrediente requerido, dispones de las MEJORES OPCIONES reales encontradas en el catálogo de la tienda con sus precios exactos en LPS.
+   - Actúa como si estuvieras recorriendo los pasillos del supermercado: evalúa el presupuesto global de {BUDGET} LPS y selecciona la opción que mejor balancee costo y practicidad.
+   - Si el presupuesto es ajustado, prioriza las opciones más económicas (marcas accesibles o presentaciones estándar).
+2. RESPETO OBLIGATORIO DE PRECIOS REALES: Cuando selecciones una opción del catálogo, ES OBLIGATORIO usar su precio real en LPS para el cálculo de los subtotales. Prohibido alterar o inventar precios de productos del catálogo.
+3. INGREDIENTES SIN REGISTRO: Solo si un ingrediente indica 'Sin registro en catálogo', proporciona una estimación realista acorde a los precios promedio de Honduras.
+4. CERO TEXTO DE RELLENO: No escribas saludos, introducciones ni despedidas (prohibido decir 'Ya está lista la lista de compras', 'Aquí tienes la lista'). Comienza inmediatamente con las tablas de pasillo.
+5. FORMATO DE SALIDA: Presenta cada pasillo/sección con una tabla Markdown clara:
+   | Producto Seleccionado | Cantidad / Presentación | Precio Unitario (LPS) | Subtotal (LPS) |
+   Al final de la lista, incluye un resumen matemático exacto:
    - **Total Estimado de Compras:** [Total] LPS
    - **Presupuesto Asignado:** {BUDGET} LPS
    - **Diferencia / Balance:** [Diferencia] LPS"""
         ),
         HumanMessage(
-            f"""Genera la lista de compras basada en los siguientes ingredientes y la información de precios reales recuperada:
+            f"""Genera la lista de compras seleccionando las mejores opciones para los ingredientes del menú y respetando los precios reales provistos:
 
 INGREDIENTES REQUERIDOS:
 {ingredients}
 
-PRECIOS REALES DE SUPERMERCADO EN BASE DE DATOS:
+CATÁLOGO DE OPCIONES REALES ENCONTRADAS EN EL SUPERMERCADO:
 {prices_context}"""
         ),
     ]

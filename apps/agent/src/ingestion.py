@@ -11,9 +11,12 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 load_dotenv(override=True)
 
-SUPERMARKET_BASE_URL = os.getenv("SUPERMARKET_BASE_URL", "https://www.paiz.com.hn")
-DB_PATH = os.getenv("PRICE_DB_PATH", "prices.db")
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_DB_PATH = os.path.join(CURRENT_DIR, "prices.db")
+DB_PATH = os.getenv("PRICE_DB_PATH", DEFAULT_DB_PATH)
 DATABASE_URL = f"sqlite:///{DB_PATH}"
+
+SUPERMARKET_BASE_URL = os.getenv("SUPERMARKET_BASE_URL", "https://www.paiz.com.hn")
 
 engine = create_engine(DATABASE_URL, echo=False)
 
@@ -27,9 +30,9 @@ def fetch_vtex_products(
     query: str,
     base_url: str = SUPERMARKET_BASE_URL,
     from_idx: int = 0,
-    to_idx: int = 49,
+    to_idx: int = 15,
 ) -> list[dict]:
-    """Fetch products from VTEX catalog search API."""
+    """Fetch products from VTEX catalog search API (handles both 200 and 206 Partial Content)."""
     endpoint = f"{base_url.rstrip('/')}/api/catalog_system/pub/products/search"
     headers = {
         "User-Agent": (
@@ -41,9 +44,14 @@ def fetch_vtex_products(
     params = {"ft": query, "_from": from_idx, "_to": to_idx}
 
     try:
-        response = httpx.get(endpoint, headers=headers, params=params, timeout=10.0)
-        if response.status_code == 200:
+        response = httpx.get(endpoint, headers=headers, params=params, timeout=12.0)
+        # Note: VTEX returns HTTP 206 for paginated queries
+        if response.status_code in (200, 206):
             return response.json()
+        else:
+            print(
+                f"[!] VTEX returned HTTP status {response.status_code} for query '{query}'"
+            )
     except Exception as e:
         print(f"[!] Error fetching VTEX data for query '{query}': {e}")
     return []
@@ -59,6 +67,7 @@ def parse_and_store_products(
     raw_products: list[dict], supermarket_name: str = "Paiz"
 ) -> int:
     """Parse raw VTEX JSON response and upsert into SQLite using SQLModel Session."""
+    init_db()
     saved_count = 0
 
     with Session(engine) as session:
@@ -169,7 +178,6 @@ def run_ingestion_batch(
             count = parse_and_store_products(products)
             total_ingested += count
 
-        # Small pause between batches to prevent rate limiting / blocking
         if idx < len(keyword_batches):
             time.sleep(delay_between_batches)
 
