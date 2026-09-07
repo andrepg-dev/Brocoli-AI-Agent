@@ -4,4 +4,8 @@ INGREDIENTS_PLANNER = "ingredients_planner"
 PRICE_RETRIEVER = "price_retriever"
 SHOPPING_LIST = "shopping_list"
 EVALUATOR = "evaluator"
+CORRECTOR = "corrector"
 CALL_LLM = "call_llm"
+
+MODEL_PROVIDER = "openai:gpt-4o-mini"
+BUDGET = "3,500"

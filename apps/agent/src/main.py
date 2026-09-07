@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from constants import (
     CALL_LLM,
+    CORRECTOR,
     EVALUATOR,
     FOOD_PLANNER_LLM,
     INGREDIENTS_PLANNER,
@@ -17,10 +18,12 @@ from langsmith import Client
 from long_term_memory import read_long_term_memory
 from nodes import (
     call_llm,
+    corrector,
     direct_talk,
     evaluator,
     food_planner,
     ingredients_planner,
+    needs_correction,
     price_retriever,
     shopping_list,
 )
@@ -29,7 +32,6 @@ load_dotenv(override=True)
 
 
 langsmith_client = Client()
-MODEL_PROVIDER = "openai:gpt-4o-mini"
 store = InMemoryStore()
 
 store.put(
@@ -54,6 +56,7 @@ graph.add_node(INGREDIENTS_PLANNER, ingredients_planner)
 graph.add_node(PRICE_RETRIEVER, price_retriever)
 graph.add_node(SHOPPING_LIST, shopping_list)
 graph.add_node(EVALUATOR, evaluator)
+graph.add_node(CORRECTOR, corrector)
 graph.add_node(CALL_LLM, call_llm)
 
 graph.add_conditional_edges(
@@ -67,7 +70,12 @@ graph.add_edge(FOOD_PLANNER_LLM, INGREDIENTS_PLANNER)
 graph.add_edge(INGREDIENTS_PLANNER, PRICE_RETRIEVER)
 graph.add_edge(PRICE_RETRIEVER, SHOPPING_LIST)
 graph.add_edge(SHOPPING_LIST, EVALUATOR)
-graph.add_edge(EVALUATOR, END)
+graph.add_conditional_edges(
+    EVALUATOR,
+    needs_correction,
+    {CORRECTOR: CORRECTOR, "end": END},
+)
+graph.add_edge(CORRECTOR, END)
 graph.add_edge(CALL_LLM, END)
 
 graph = graph.compile()

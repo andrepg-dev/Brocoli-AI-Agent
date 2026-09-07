@@ -1,14 +1,30 @@
 from datetime import datetime
 
-from constants import CALL_LLM, FOOD_PLANNER_LLM
+from constants import BUDGET, CALL_LLM, CORRECTOR, FOOD_PLANNER_LLM, MODEL_PROVIDER
 from graph_state import GraphMemoryState
 from langchain.chat_models import init_chat_model
-from langchain.messages import HumanMessage, SystemMessage
+from langchain.messages import AIMessage, HumanMessage, SystemMessage
+from pydantic import BaseModel, Field
 from retrieve import get_prices_for_ingredients_batch
 from rich.console import Console
 
 console = Console()
-MODEL_PROVIDER = "openai:gpt-4o-mini"
+
+
+class AuditResult(BaseModel):
+    report: str = Field(
+        description=(
+            "Reporte completo de auditoría en Markdown con veredicto, "
+            "análisis por criterio y recomendaciones"
+        )
+    )
+    corrections: str | None = Field(
+        default=None,
+        description=(
+            "Correcciones específicas a aplicar en la lista de compras. "
+            "Null si todo está correcto y aprobado."
+        ),
+    )
 
 
 def food_planner(state: GraphMemoryState):
@@ -53,9 +69,6 @@ Reglas del usuario:
     console.print(response.content)
 
     return {"messages": [response], "food": response.content}
-
-
-BUDGET = "3,500"
 
 
 def ingredients_planner(state: GraphMemoryState):
@@ -160,11 +173,9 @@ CÓMO ELEGIR LOS PRODUCTOS EN EL SUPERMERCADO:
 4. CERO TEXTO DE RELLENO: No escribas saludos, introducciones ni despedidas (prohibido decir 'Ya está lista la lista de compras', 'Aquí tienes la lista'). Comienza inmediatamente con las tablas de pasillo.
 5. FORMATO DE SALIDA: Presenta cada pasillo/sección con una tabla Markdown clara:
 6. TE EN CUENTA: Ocasionalmente NO se mostrará el producto que buscas en el Catálogo de Opciones reales en el supermercado, en ese caso PON UN PRECIO ESTIMADO SI EL PRODUCTO DEL CATALOGO NO sea igual al INGREDIENTE
+
    | Producto Seleccionado | Cantidad / Presentación | Precio Unitario (LPS) | Subtotal (LPS) |
-   Al final de la lista, incluye un resumen matemático exacto:
-   - **Total Estimado de Compras:** [Total] LPS
-   - **Presupuesto Asignado:** {BUDGET} LPS
-   - **Diferencia / Balance:** [Diferencia] LPS"""
+"""
         ),
         HumanMessage(
             f"""Genera la lista de compras seleccionando las mejores opciones para los ingredientes del menú y respetando los precios reales provistos, en el producto seleccionado incluye el nombre de la marca:
@@ -205,10 +216,12 @@ REGLAS OBLIGATORIAS:
 - IDIOMA: Todo exclusivamente en español.
 - CERO COMPLACENCIA NI ALUCINACIONES: Sé sumamente crítico. Si la matemática no suma bien, señálalo. Si faltan ingredientes o las porciones son insuficientes para 15 días, indícalo claramente con números.
 - CERO TEXTO DE RELLENO: No pongas introducciones ni saludos. Ve directo al reporte estructurado en Markdown.
-- FORMATO:
+- FORMATO DEL REPORTE:
   - 📋 **Veredicto General:** [Aprobado / Ajustes Necesarios / Inviable]
   - 📊 **Auditoría por Criterio:** Usa viñetas con ✅ (Correcto), ⚠️ (Advertencia) o ❌ (Falla/Error).
-  - 💡 **Ajustes y Recomendaciones Concretas:** Si hay fallas en presupuesto o ingredientes, indica exactamente qué ajustar."""
+  - 💡 **Ajustes y Recomendaciones Concretas:** Si hay fallas en presupuesto o ingredientes, indica exactamente qué ajustar.
+- CORRECCIONES: En el campo "corrections", escribe SOLO las correcciones concretas y accionables que se deben aplicar a la lista de compras (ej. "Reducir la cantidad de arroz de 5 lbs a 3 lbs", "Eliminar el item X porque no se usa en el menú"). Si todo está correcto y aprobado, deja el campo null.
+"""
         ),
         HumanMessage(
             f"""Audita los siguientes datos:
@@ -224,8 +237,15 @@ LISTA DE COMPRAS:
         ),
     ]
 
-    response = llm.invoke(messages)
-    return {"messages": [response]}
+    model = llm.with_structured_output(AuditResult)
+    result: AuditResult = model.invoke(messages)
+
+    report_message = AIMessage(content=result.report)
+
+    return {
+        "messages": [report_message],
+        "corrections": result.corrections,
+    }
 
 
 def call_llm(state: GraphMemoryState):
@@ -236,6 +256,72 @@ def call_llm(state: GraphMemoryState):
     )
     response = llm.invoke(state["messages"])
     return {"messages": [response]}
+
+
+def corrector(state: GraphMemoryState):
+    llm = init_chat_model(MODEL_PROVIDER, temperature=0.1)
+    food = state.get("food") or ""
+    real_prices = state.get("real_prices") or []
+    shopping_list_content = state.get("shopping_list") or ""
+    corrections = state.get("corrections") or ""
+
+    assert food and shopping_list_content and corrections, (
+        "Faltan datos para ejecutar el corrector"
+    )
+
+    prices_context = ""
+    for item in real_prices:
+        ing = item.get("ingredient")
+        options = item.get("options", [])
+        if options:
+            prices_context += f"\n🛒 **{ing}**:\n"
+            for opt in options:
+                prices_context += f"   - {opt['product']} -> {opt['price']} LPS\n"
+        else:
+            prices_context += f"\n🛒 **{ing}** -> Sin opciones en catálogo (estimar)\n"
+
+    console.print(
+        f"\n[cyan]Aplicando {len(corrections.splitlines())} correcciones...[/cyan]"
+    )
+
+    messages = [
+        SystemMessage(
+            f"""Eres un asistente experto en compras de supermercados de Honduras.
+Se te provee la lista de compras actual y las correcciones que el auditor solicitó.
+Debes regenerar la lista de compras aplicando ESAS correcciones, manteniendo el mismo formato de tablas Markdown y el resumen al final.
+
+REGLAS:
+- IDIOMA: Todo en español.
+- PRESUPUESTO: La lista corregida debe respetar estrictamente el presupuesto de {BUDGET} LPS.
+- PRECIOS REALES: Usa los precios del catálogo provisto. No inventes precios de productos del catálogo.
+- CERO TEXTO DE RELLENO: Ve directo a la lista de compras corregida.
+- MANTÉN EL FORMATO: Tablas Markdown por pasillo/sección con columnas: Producto Seleccionado | Cantidad / Presentación | Precio Unitario (LPS) | Subtotal (LPS). Al final incluye el resumen matemático."""
+        ),
+        HumanMessage(
+            f"""LISTA DE COMPRAS ACTUAL:
+{shopping_list_content}
+
+CATÁLOGO DE PRECIOS REALES:
+{prices_context}
+
+CORRECCIONES QUE DEBES APLICAR:
+{corrections}"""
+        ),
+    ]
+
+    response = llm.invoke(messages)
+
+    return {
+        "messages": [response.content],
+        "shopping_list": response.content,
+        "corrections": None,
+    }
+
+
+def needs_correction(state: GraphMemoryState) -> str:
+    if state.get("corrections"):
+        return CORRECTOR
+    return "end"
 
 
 def direct_talk(state: GraphMemoryState):
