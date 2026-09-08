@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from graph_state import GraphMemoryState
 from langgraph.graph import END, START, StateGraph
 from langgraph.store.memory import InMemoryStore
+from langgraph.types import RetryPolicy, default_retry_on
 from langsmith import Client
 from long_term_memory import read_long_term_memory
 from nodes import (
@@ -57,7 +58,11 @@ graph.add_node(PRICE_RETRIEVER, price_retriever)
 graph.add_node(SHOPPING_LIST, shopping_list)
 graph.add_node(EVALUATOR, evaluator)
 graph.add_node(CORRECTOR, corrector)
-graph.add_node(CALL_LLM, call_llm)
+graph.add_node(
+    CALL_LLM,
+    call_llm,
+    retry_policy=RetryPolicy(max_attempts=3, retry_on=default_retry_on),
+)
 
 graph.add_conditional_edges(
     READ_LONG_TERM_MEMORY,
