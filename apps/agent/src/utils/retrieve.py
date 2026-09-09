@@ -4,9 +4,9 @@ import os
 import re
 import unicodedata
 
-from ingestion import fetch_vtex_products, parse_and_store_products
-from models import ProductPrice
 from sqlmodel import Session, create_engine, select
+from utils.ingestion import fetch_vtex_products, parse_and_store_products
+from utils.models import ProductPrice
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB_PATH = os.path.join(CURRENT_DIR, "prices.db")

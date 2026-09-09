@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 
-from constants import (
+from dotenv import load_dotenv
+from langgraph.graph import END, START, StateGraph
+from langgraph.store.memory import InMemoryStore
+from langgraph.types import RetryPolicy, default_retry_on
+from langsmith import Client
+from utils.constants import (
     CALL_LLM,
     CORRECTOR,
     EVALUATOR,
@@ -10,14 +15,9 @@ from constants import (
     READ_LONG_TERM_MEMORY,
     SHOPPING_LIST,
 )
-from dotenv import load_dotenv
-from graph_state import GraphMemoryState
-from langgraph.graph import END, START, StateGraph
-from langgraph.store.memory import InMemoryStore
-from langgraph.types import RetryPolicy, default_retry_on
-from langsmith import Client
-from long_term_memory import read_long_term_memory
-from nodes import (
+from utils.graph_state import GraphMemoryState
+from utils.long_term_memory import read_long_term_memory
+from utils.nodes import (
     call_llm,
     corrector,
     direct_talk,

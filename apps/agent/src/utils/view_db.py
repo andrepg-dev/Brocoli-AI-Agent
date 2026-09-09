@@ -2,11 +2,11 @@
 
 import argparse
 
-from models import ProductPrice
-from retrieve import engine
 from rich.console import Console
 from rich.table import Table
 from sqlmodel import Session, select
+from utils.models import ProductPrice
+from utils.retrieve import engine
 
 
 def view_prices(limit: int = 50, search: str | None = None) -> None:

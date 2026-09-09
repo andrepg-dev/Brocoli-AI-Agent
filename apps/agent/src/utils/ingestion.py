@@ -6,8 +6,8 @@ from datetime import datetime
 
 import httpx
 from dotenv import load_dotenv
-from models import ProductPrice
 from sqlmodel import Session, SQLModel, create_engine, select
+from utils.models import ProductPrice
 
 load_dotenv(override=True)
 
