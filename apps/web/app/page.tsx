@@ -1,5 +1,5 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import Image from 'next/image'
+import styles from './page.module.css'
 
 const navItems = [
   { href: '#producto', label: 'Comer mejor' },
@@ -310,8 +310,9 @@ export default function Home() {
           <span>con lo que tienes en casa.</span>
         </h1>
         <p className={styles.heroCopy}>
-          Prepara comidas saludables con lo que tienes en casa y compra solo lo
-          necesario para completar tu semana.
+          Levantate con energía por las mañanas. Brocoli arma tus planes de
+          comida para que puedas levantarte cada día con energías y maximizes tu
+          rendimiento.
         </p>
         <div className={styles.heroActions}>
           <a className={styles.primaryButton} href='#acceso'>
