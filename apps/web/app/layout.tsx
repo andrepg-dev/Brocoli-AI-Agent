@@ -1,40 +1,40 @@
-import type { Metadata } from "next";
-import { Bricolage_Grotesque } from "next/font/google";
-import localFont from "next/font/local";
-import "./globals.css";
+import type { Metadata } from 'next'
+import { Bricolage_Grotesque } from 'next/font/google'
+import localFont from 'next/font/local'
+import './globals.css'
 
 const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  display: "swap",
-});
+  src: './fonts/GeistVF.woff',
+  variable: '--font-geist-sans',
+  display: 'swap',
+})
 
 const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
-  variable: "--font-bricolage",
-  display: "swap",
-});
+  subsets: ['latin'],
+  variable: '--font-bricolage',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
-  title: "Brócoli — Come saludable con lo que tienes en casa",
+  title: 'Brocoli | Accede a lista prioritaria',
   description:
-    "Comidas saludables y variadas con ingredientes cotidianos, opciones hondureñas y compras dentro de tu presupuesto.",
+    'Comidas saludables y variadas con ingredientes cotidianos, opciones hondureñas y compras dentro de tu presupuesto.',
   icons: {
-    icon: "/favicon.ico",
-    apple: "/brocoli-icon.png",
+    icon: '/favicon.ico',
+    apple: '/brocoli-icon.png',
   },
-};
+}
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: React.ReactNode
 }>) {
   return (
-    <html lang="es">
+    <html lang='es'>
       <body className={`${geistSans.variable} ${bricolage.variable}`}>
         {children}
       </body>
     </html>
-  );
+  )
 }
